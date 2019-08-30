@@ -9,12 +9,18 @@ use piston::input::*;
 use piston::Button::Keyboard;
 use glutin_window::GlutinWindow;
 use opengl_graphics::{ GlGraphics, OpenGL };
+use rand::Rng;
 
 pub struct App {
     gl: GlGraphics, // OpenGL drawing backend.
-    rotation: f64,   // Rotation for the square.
-    size: f64,
+    gametype: GameType,
     entities: Vec<Entity>
+}
+
+enum GameType {
+    Empty,
+    Empty_Walled(f64, f64, f64, f64),
+    Walled_Food(f64, f64, f64, f64, usize)
 }
 
 enum Entity {
@@ -119,30 +125,28 @@ impl Entity {
         Entity::Wall(start.extend(&end))
     }
 
-    fn new_Food(p: Position) -> Entity {
-        Entity::Food(p)
-    }
-
     fn turn(&mut self, d: Direction) {
         if let Entity::Snake(pos_mem, ref mut dir, controller) = self {
+            let valid: bool = true;
+
             match d {
                 Direction::Right => {
-                    if let Direction::Left = dir { } else {
+                    if !(pos_mem[0].x == pos_mem[1].x - 1.0 && pos_mem[0].y == pos_mem[1].y) {
                         *dir = d;
                     }
                 },
                 Direction::Left => {
-                    if let Direction::Right = dir { } else {
+                    if !(pos_mem[0].x == pos_mem[1].x + 1.0 && pos_mem[0].y == pos_mem[1].y) {
                         *dir = d;
                     }
                 },
                 Direction::Up => {
-                    if let Direction::Down = dir { } else {
+                    if !(pos_mem[0].x == pos_mem[1].x && pos_mem[0].y == pos_mem[1].y + 1.0) {
                         *dir = d;
                     }
                 },
                 Direction::Down => {
-                    if let Direction::Up = dir { } else {
+                    if !(pos_mem[0].x == pos_mem[1].x && pos_mem[0].y == pos_mem[1].y - 1.0) {
                         *dir = d;
                     }
                 }
@@ -289,10 +293,92 @@ impl Entity {
 }
 
 impl App {
+    fn new_Game(g: GlGraphics, gmtyp: GameType) -> App {
+        match gmtyp {
+            GameType::Empty => App {
+                gl: g,
+                gametype: gmtyp,
+                entities: vec![Entity::new_Snake(Position::new(5.0, 5.0), Direction::Right, Controller::Player(5, 0))]
+            },
+            GameType::Empty_Walled(x1, y1, x2, y2) => App {
+                gl: g,
+                gametype: gmtyp,
+                entities: vec![Entity::new_Snake(Position::new(5.0, 5.0), Direction::Right, Controller::Player(5, 0)),
+                                                 Entity::new_Wall(Position::new(x1, y1), Position::new(x2, y2)),
+                                                 Entity::new_Wall(Position::new(x2, y2), Position::new(x1, y1))]
+            },
+            GameType::Walled_Food(x1, y1, x2, y2, food_count) => {
+                let mut temp = App {
+                    gl: g,
+                    gametype: gmtyp,
+                    entities: vec![Entity::new_Snake(Position::new(5.0, 5.0), Direction::Right, Controller::Player(5, 0)),
+                                                     Entity::new_Wall(Position::new(x1, y1), Position::new(x2, y2)),
+                                                     Entity::new_Wall(Position::new(x2, y2), Position::new(x1, y1))]
+                };
+                let mut valid = true;
+
+                while temp.entities.len() - 3 < food_count {
+                    valid = true;
+
+                    let mut pos = Position::new(((rand::random::<f64>() * (x2 - x1 - 1.0)) + 1.0).trunc(),
+                                                ((rand::random::<f64>() * (y2 - y1 - 1.0)) + 1.0).trunc());
+
+                    if pos.collide(&temp.entities[0]) {
+                        valid = false;
+                    } else {
+                        for i in 3..temp.entities.len() {
+                            if pos.collide(&temp.entities[i]) {
+                                valid = false;
+                            }
+                        }
+                    }
+
+                    if valid {
+                        temp.entities.push(Entity::Food(pos));
+                    }
+                }
+                temp
+            },
+        }
+    }
+
+    fn reset(&mut self) {
+        match &mut self.gametype {
+            GameType::Empty => self.entities = vec![Entity::new_Snake(Position::new(5.0, 5.0), Direction::Right, Controller::Player(5, 0))],
+            GameType::Empty_Walled(x1, y1, x2, y2) => self.entities[0] = Entity::new_Snake(Position::new(5.0, 5.0), Direction::Right, Controller::Player(5, 0)),
+            GameType::Walled_Food(x1, y1, x2, y2, food_count) => {
+                self.entities[0] = Entity::new_Snake(Position::new(5.0, 5.0), Direction::Right, Controller::Player(5, 0));
+                self.entities.truncate(3);
+                let mut valid = true;
+
+                while self.entities.len() - 3 < *food_count {
+                    valid = true;
+
+                    let mut pos = Position::new(((rand::random::<f64>() * (*x2 - *x1 - 1.0)) + 1.0).trunc(),
+                                                ((rand::random::<f64>() * (*y2 - *y1 - 1.0)) + 1.0).trunc());
+
+                    if pos.collide(&self.entities[0]) {
+                        valid = false;
+                    } else {
+                        for i in 3..self.entities.len() {
+                            if pos.collide(&self.entities[i]) {
+                                valid = false;
+                            }
+                        }
+                    }
+
+                    if valid {
+                        self.entities.push(Entity::Food(pos));
+                    }
+                }
+            },
+        }
+    }
+
     fn render(&mut self, args: &RenderArgs) {
         use graphics::*;
 
-        const BACK: [f32; 4] = [0.8, 0.2, 0.0, 1.0];
+        const BACK: [f32; 4] = [0.4, 0.4, 0.0, 1.0];
         const RED:  [f32; 4] = [1.0, 0.0, 0.0, 1.0];
         const BLUE: [f32; 4] = [0.0, 0.0, 1.0, 1.0];
         const GRAY: [f32; 4] = [0.2, 0.2, 0.2, 1.0];
@@ -339,12 +425,9 @@ fn main() {
         .unwrap();
 
     // Create a new game and run it.
-    let mut app = App {
-        gl: GlGraphics::new(opengl),
-        rotation: 0.0,
-        size: 200.0,
-        entities: vec![Entity::new_Snake(Position::new(5.0, 5.0), Direction::Right, Controller::Player(5, 0))]
-    };
+    //let mut app = App::new_Game(GlGraphics::new(opengl), GameType::Empty);
+    //let mut app = App::new_Game(GlGraphics::new(opengl), GameType::Empty_Walled(0.0, 0.0, 191.0, 107.0));
+    let mut app = App::new_Game(GlGraphics::new(opengl), GameType::Walled_Food(0.0, 0.0, 191.0, 107.0, 5));
 
     while let Some(e) = events.next(&mut window) {
         if let Some(r) = e.render_args() {
@@ -362,6 +445,7 @@ fn main() {
                     Key::Left => app.entities[0].turn(Direction::Left),
                     Key::Up => app.entities[0].turn(Direction::Up),
                     Key::Down => app.entities[0].turn(Direction::Down),
+                    Key::R => app.reset(),
                     _ => (),
                 }
             }
