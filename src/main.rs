@@ -18,10 +18,10 @@ pub struct App {
 }
 
 enum GameType {
-    Empty,
-    Empty_Walled(f64, f64, f64, f64),
-    Walled_Food(f64, f64, f64, f64, usize),
-    Clutterer(f64, f64, f64, f64, usize)
+    Empty(usize, u32),
+    Empty_Walled(usize, u32, f64, f64, f64, f64),
+    Walled_Food(usize, u32, f64, f64, f64, f64, usize),
+    Clutterer(usize, u32, f64, f64, f64, f64, usize)
 }
 
 enum Entity {
@@ -41,7 +41,7 @@ struct ColoredRect {
 }
 
 enum Controller {
-    Player(usize, u32)
+    Player(usize, u32, usize, u32)
 }
 
 enum Direction {
@@ -118,8 +118,12 @@ impl Position {
 }
 
 impl Entity {
-    fn new_Snake(p: Position, d: Direction, c: Controller) -> Entity {
-        Entity::Snake(vec![p], d, Controller::Player(5, 0))
+    fn new_Snake(p: Position, d: Direction) -> Entity {
+        Entity::Snake(vec![p], d, Controller::Player(5, 0, 5, 5))
+    }
+
+    fn custom_Snake(p: Position, d: Direction, c: Controller) -> Entity {
+        Entity::Snake(vec![p], d, c)
     }
 
     fn new_Wall(start: Position, end: Position) -> Entity {
@@ -191,6 +195,7 @@ impl Entity {
 
         for i in &snake_indices {
             let mut next = Position::new(0.0, 0.0);
+            let mut can_move = false;
 
             if let Entity::Snake(pos_mem, dir, ref mut controller) = &mut entities[*i] {
                 next = match dir {
@@ -201,40 +206,41 @@ impl Entity {
                 };
 
                 match controller {
-                    Controller::Player(target_len, ref mut count) => {
+                    Controller::Player(target_len, ref mut count, grow_len, speed) => {
                         *count += 1;
-                        if *count == 840 {
+                        if *count == *speed {
                             *count = 0;
                         }
+                        can_move = *count % *speed == 0;
                     },
                 };
             }
 
-            for j in &obs_indices {
-                if next.collide(&entities[*j]) {
-                    let mut temp = entities.remove(*i);
-                    temp = temp.kill();
-                    entities.insert(*i, temp);
-                }
-            }
-
-            for j in &food_indices {
-                if next.collide(&entities[*j]) {
-                    if let Entity::Snake(a,b, ref mut control) = &mut entities[*i] {
-                        match control {
-                            Controller::Player(ref mut target_len, count) => {
-                                *target_len += 5;
-                            },
-                        }
+            if can_move {
+                for j in &obs_indices {
+                    if next.collide(&entities[*j]) {
+                        let mut temp = entities.remove(*i);
+                        temp = temp.kill();
+                        entities.insert(*i, temp);
                     }
-                    drop_indices.push(*j);
                 }
-            }
 
-            if let Entity::Snake(ref mut pos_mem, b, control) = &mut entities[*i] {
-                match &control {
-                    Controller::Player(target_len, count) => {
-                        if count % 5 == 0 {
+                for j in &food_indices {
+                    if next.collide(&entities[*j]) {
+                        if let Entity::Snake(a,b, ref mut control) = &mut entities[*i] {
+                            match control {
+                                Controller::Player(ref mut target_len, count, grow_len, speed) => {
+                                    *target_len += *grow_len;
+                                },
+                            }
+                        }
+                        drop_indices.push(*j);
+                    }
+                }
+
+                if let Entity::Snake(ref mut pos_mem, b, control) = &mut entities[*i] {
+                    match &control {
+                        Controller::Player(target_len, count, grow_len, speed) => {
                             if *target_len == pos_mem.len() {
                                 pos_mem.pop();
                             }
@@ -296,23 +302,23 @@ impl Entity {
 impl App {
     fn new_Game(g: GlGraphics, gmtyp: GameType) -> App {
         match gmtyp {
-            GameType::Empty => App {
+            GameType::Empty(grow_len, speed) => App {
                 gl: g,
                 gametype: gmtyp,
-                entities: vec![Entity::new_Snake(Position::new(5.0, 5.0), Direction::Right, Controller::Player(5, 0))]
+                entities: vec![Entity::custom_Snake(Position::new(0.0, 0.0), Direction::Right, Controller::Player(5, 0, grow_len, speed))]
             },
-            GameType::Empty_Walled(x1, y1, x2, y2) => App {
+            GameType::Empty_Walled(grow_len, speed, x1, y1, x2, y2) => App {
                 gl: g,
                 gametype: gmtyp,
-                entities: vec![Entity::new_Snake(Position::new(5.0, 5.0), Direction::Right, Controller::Player(5, 0)),
+                entities: vec![Entity::custom_Snake(Position::new(95.0, 53.0), Direction::Right, Controller::Player(5, 0, grow_len, speed)),
                                                  Entity::new_Wall(Position::new(x1, y1), Position::new(x2, y2)),
                                                  Entity::new_Wall(Position::new(x2, y2), Position::new(x1, y1))]
             },
-            GameType::Walled_Food(x1, y1, x2, y2, food_count) => {
+            GameType::Walled_Food(grow_len, speed, x1, y1, x2, y2, food_count) => {
                 let mut temp = App {
                     gl: g,
                     gametype: gmtyp,
-                    entities: vec![Entity::new_Snake(Position::new(5.0, 5.0), Direction::Right, Controller::Player(5, 0)),
+                    entities: vec![Entity::custom_Snake(Position::new(95.0, 53.0), Direction::Right, Controller::Player(5, 0, grow_len, speed)),
                                                      Entity::new_Wall(Position::new(x1, y1), Position::new(x2, y2)),
                                                      Entity::new_Wall(Position::new(x2, y2), Position::new(x1, y1))]
                 };
@@ -340,11 +346,11 @@ impl App {
                 }
                 temp
             },
-            GameType::Clutterer(x1, y1, x2, y2, food_count) => {
+            GameType::Clutterer(grow_len, speed, x1, y1, x2, y2, food_count) => {
                 let mut temp = App {
                     gl: g,
                     gametype: gmtyp,
-                    entities: vec![Entity::new_Snake(Position::new(5.0, 5.0), Direction::Right, Controller::Player(5, 0)),
+                    entities: vec![Entity::custom_Snake(Position::new(95.0, 53.0), Direction::Right, Controller::Player(5, 0, grow_len, speed)),
                                                      Entity::new_Wall(Position::new(x1, y1), Position::new(x2, y2)),
                                                      Entity::new_Wall(Position::new(x2, y2), Position::new(x1, y1))]
                 };
@@ -377,10 +383,11 @@ impl App {
 
     fn reset(&mut self) {
         match &mut self.gametype {
-            GameType::Empty => self.entities = vec![Entity::new_Snake(Position::new(5.0, 5.0), Direction::Right, Controller::Player(5, 0))],
-            GameType::Empty_Walled(x1, y1, x2, y2) => self.entities[0] = Entity::new_Snake(Position::new(5.0, 5.0), Direction::Right, Controller::Player(5, 0)),
-            GameType::Walled_Food(x1, y1, x2, y2, food_count) => {
-                self.entities[0] = Entity::new_Snake(Position::new(5.0, 5.0), Direction::Right, Controller::Player(5, 0));
+            GameType::Empty(grow_len, speed) => self.entities = vec![Entity::custom_Snake(Position::new(95.0, 53.0), Direction::Right, Controller::Player(5, 0, *grow_len, *speed))],
+            GameType::Empty_Walled(grow_len, speed, x1, y1, x2, y2) =>
+                self.entities[0] = Entity::custom_Snake(Position::new(95.0, 53.0), Direction::Right, Controller::Player(5, 0, *grow_len, *speed)),
+            GameType::Walled_Food(grow_len, speed, x1, y1, x2, y2, food_count) => {
+                self.entities[0] = Entity::custom_Snake(Position::new(95.0, 53.0), Direction::Right, Controller::Player(5, 0, *grow_len, *speed));
                 self.entities.truncate(3);
                 let mut valid = true;
 
@@ -405,8 +412,9 @@ impl App {
                     }
                 }
             },
-            GameType::Clutterer(x1, y1, x2, y2, food_count) => {
-                self.entities[0] = Entity::new_Snake(Position::new(5.0, 5.0), Direction::Right, Controller::Player(5, 0));
+            GameType::Clutterer(grow_len, speed, x1, y1, x2, y2, food_count) => {
+                self.entities[0] = Entity::custom_Snake(Position::new(95.0, 53.0), Direction::Right, Controller::Player(5, 0, *grow_len, *speed));
+                //XXX Truncation is not correct here
                 self.entities.truncate(3);
                 let mut valid = true;
 
@@ -435,7 +443,7 @@ impl App {
     }
 
     fn spawn_food(&mut self) {
-        if let GameType::Walled_Food(x1, y1, x2, y2, food_count) = &mut self.gametype {
+        if let GameType::Walled_Food(grow_len, speed, x1, y1, x2, y2, food_count) = &mut self.gametype {
             let mut valid = true;
 
             while self.entities.len() - 3 < *food_count {
@@ -512,9 +520,9 @@ fn main() {
         .unwrap();
 
     // Create a new game and run it.
-    //let mut app = App::new_Game(GlGraphics::new(opengl), GameType::Empty);
-    //let mut app = App::new_Game(GlGraphics::new(opengl), GameType::Empty_Walled(0.0, 0.0, 191.0, 107.0));
-    let mut app = App::new_Game(GlGraphics::new(opengl), GameType::Walled_Food(0.0, 0.0, 191.0, 107.0, 5));
+    //let mut app = App::new_Game(GlGraphics::new(opengl), GameType::Empty(5, 5));
+    //let mut app = App::new_Game(GlGraphics::new(opengl), GameType::Empty_Walled(5, 5, 0.0, 0.0, 191.0, 107.0));
+    let mut app = App::new_Game(GlGraphics::new(opengl), GameType::Walled_Food(200, 2, 0.0, 0.0, 191.0, 107.0, 5));
 
     while let Some(e) = events.next(&mut window) {
         if let Some(r) = e.render_args() {
