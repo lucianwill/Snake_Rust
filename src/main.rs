@@ -20,7 +20,8 @@ pub struct App {
 enum GameType {
     Empty,
     Empty_Walled(f64, f64, f64, f64),
-    Walled_Food(f64, f64, f64, f64, usize)
+    Walled_Food(f64, f64, f64, f64, usize),
+    Clutterer(f64, f64, f64, f64, usize)
 }
 
 enum Entity {
@@ -339,6 +340,38 @@ impl App {
                 }
                 temp
             },
+            GameType::Clutterer(x1, y1, x2, y2, food_count) => {
+                let mut temp = App {
+                    gl: g,
+                    gametype: gmtyp,
+                    entities: vec![Entity::new_Snake(Position::new(5.0, 5.0), Direction::Right, Controller::Player(5, 0)),
+                                                     Entity::new_Wall(Position::new(x1, y1), Position::new(x2, y2)),
+                                                     Entity::new_Wall(Position::new(x2, y2), Position::new(x1, y1))]
+                };
+                let mut valid = true;
+
+                while temp.entities.len() - 3 < food_count {
+                    valid = true;
+
+                    let mut pos = Position::new(((rand::random::<f64>() * (x2 - x1 - 1.0)) + 1.0).trunc(),
+                                                ((rand::random::<f64>() * (y2 - y1 - 1.0)) + 1.0).trunc());
+
+                    if pos.collide(&temp.entities[0]) {
+                        valid = false;
+                    } else {
+                        for i in 3..temp.entities.len() {
+                            if pos.collide(&temp.entities[i]) {
+                                valid = false;
+                            }
+                        }
+                    }
+
+                    if valid {
+                        temp.entities.push(Entity::Food(pos));
+                    }
+                }
+                temp
+            },
         }
     }
 
@@ -372,6 +405,59 @@ impl App {
                     }
                 }
             },
+            GameType::Clutterer(x1, y1, x2, y2, food_count) => {
+                self.entities[0] = Entity::new_Snake(Position::new(5.0, 5.0), Direction::Right, Controller::Player(5, 0));
+                self.entities.truncate(3);
+                let mut valid = true;
+
+                while self.entities.len() - 3 < *food_count {
+                    valid = true;
+
+                    let mut pos = Position::new(((rand::random::<f64>() * (*x2 - *x1 - 1.0)) + 1.0).trunc(),
+                                                ((rand::random::<f64>() * (*y2 - *y1 - 1.0)) + 1.0).trunc());
+
+                    if pos.collide(&self.entities[0]) {
+                        valid = false;
+                    } else {
+                        for i in 3..self.entities.len() {
+                            if pos.collide(&self.entities[i]) {
+                                valid = false;
+                            }
+                        }
+                    }
+
+                    if valid {
+                        self.entities.push(Entity::Food(pos));
+                    }
+                }
+            },
+        }
+    }
+
+    fn spawn_food(&mut self) {
+        if let GameType::Walled_Food(x1, y1, x2, y2, food_count) = &mut self.gametype {
+            let mut valid = true;
+
+            while self.entities.len() - 3 < *food_count {
+                valid = true;
+
+                let mut pos = Position::new(((rand::random::<f64>() * (*x2 - *x1 - 1.0)) + 1.0).trunc(),
+                                            ((rand::random::<f64>() * (*y2 - *y1 - 1.0)) + 1.0).trunc());
+
+                if pos.collide(&self.entities[0]) {
+                    valid = false;
+                } else {
+                    for i in 3..self.entities.len() {
+                        if pos.collide(&self.entities[i]) {
+                            valid = false;
+                        }
+                    }
+                }
+
+                if valid {
+                    self.entities.push(Entity::Food(pos));
+                }
+            }
         }
     }
 
@@ -403,6 +489,7 @@ impl App {
 
     fn update(mut self, args: &UpdateArgs) -> App {
         self.entities = Entity::step(self.entities);
+        self.spawn_food();
         return self;
     }
 }
